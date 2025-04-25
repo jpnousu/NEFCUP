@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --job-name=myTest           # Job name
+#SBATCH --account=project_2000908   # Billing project, has to be defined!
+#SBATCH --time=02:00:00             # Max. duration of the job
+#SBATCH --mem-per-cpu=144G            # Memory to reserve per core
+#SBATCH --partition=small           # Job queue (partition)
+#SBATCH --mail-type=BEGIN          # Uncomment to enable mail
+
+module load geoconda           	 # Load required modules
+
+cd /projappl/project_2000908/nousu/mNFI_to_NEP
+
+srun python process_mnfi.py      	# Run program using requested resources
