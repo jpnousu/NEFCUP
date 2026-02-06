@@ -24,7 +24,7 @@ def gpp_model(Age, model, T=None, Vpd=None, Fert=None, Habitat=0):
         c = 5.45
  
     if model == 3:  # Age, T, VPD_gs
-        a = 52.210274    
+        a = 52.210274
         b = 1223.00 + 86.70 * T - 414.48 * Vpd
         c = 5.54
  
