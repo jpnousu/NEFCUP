@@ -1,6 +1,6 @@
-How to use NEFCUP?
+Guide to NEFCUP notebooks
 
-CLASSIFICATION SHARES:
+CLASSIFICATION SHARES
 - area fraction of each class within the 10x10km grid
 1. classified_shares.ipynb
 - classified mNFI grids to 12 classes based on maaluokka, paatyyppi, ravinteikkuus
@@ -19,12 +19,12 @@ CLASSIFICATION IKA AND PPA
 
 REPROJECTION AND RESAMPLING
 - reprojecting and resampling to common crs and grid
-5. resample_and_reproj_mnfi.ipynb
-- Resamples and reprojects the 'classified' mnfi .tif files. Uses reference grid
-6. reproj_khkmask.ipynb
-- reprojects khkmask
-7. reproj_fmi.ipynb
+5. reproj_fmi.ipynb
 - reproject fmi grids
+6. resample_and_reproj_mnfi.ipynb
+- Resamples and reprojects the 'classified' mnfi .tif files. Uses reference grid
+7. reproj_khkmask.ipynb
+- reprojects khkmask
 
 MERGE
 - preparing to compute

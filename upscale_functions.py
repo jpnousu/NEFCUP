@@ -1,3 +1,7 @@
+import pandas as pd
+import numpy as np
+import xarray as xr
+
 def gpp_model(Age, model, T=None, Vpd=None, Fert=None, Habitat=0):
     """fixed part of gpp-age model
     Args:
@@ -160,3 +164,170 @@ def nep_model(Age, model, T=None, Plant=None, Fert=None):
     y = a + b * (Age / (Age + c)) - d * Age
  
     return y
+
+
+def best_models(model, Age, Nsamples=1000, **kwargs):
+    """
+    Predicts NEP, GPP or ER based on the best models, including uncertainty estimation via Monte Carlo simulation.
+    MODELS BASED ON ALL SITES
+
+    Args:
+        flux (str): NEP, GPP, ER
+        Age (array): stand age
+        uncertainty (float): uncertainty level
+        **kwargs (array): explanatory variables beyond Age
+                T (float): mean air temperature (degC). Defaults to None.
+                VPDgs (float): growing season vapor pressure deficit (kPa). Defaults to None.
+                Fert (int): Low == 1, High = 0. Defaults to None.
+                Plant (int): Yes == 1, No = 0
+    """
+
+    def nep_fun(p, Age, T, Plant):
+        #print(p)
+        a = p[0] + p[1] * Plant
+        b = p[2] + p[3] * T
+        c = p[4]
+        d = p[5]
+        y = a + b * (Age / (Age + c)) - d * Age
+        return y
+    
+    def gpp_fun(p, Age, T, VPDgs, Fert, Plant=None):
+        a = p[0] 
+        b = p[1] + p[2] * T + p[3]*VPDgs + p[4] * Fert
+        c = p[5]
+        y = a + b * (Age / (Age + c))
+        return y
+    
+    def reco_fun(p, Age, T, Fert, Plant, VPDgs=None):
+        a = p[0] + p[1]*T + p[2]*Fert + p[3]*Plant
+        d = p[4]
+        y = a + d * Age
+        return y
+
+    is_xr = isinstance(Age, xr.DataArray)
+
+    if is_xr:
+        age_dims = Age.dims
+        age_coords = Age.coords
+        
+        # work with numpy internally
+        Age = Age.values
+        # prevent x/y flip: force kwargs DataArrays to same dim order as Age
+        kwargs = {
+            k: (v.transpose(*age_dims).values if isinstance(v, xr.DataArray) else v)
+            for k, v in kwargs.items()
+        }
+    else:
+        # Age is numpy / list / scalar etc.
+        Age = np.asarray(Age)
+        # kwargs can stay as-is; convert array-likes to numpy if you want
+        kwargs = {k: (np.asarray(v) if hasattr(v, "__array__") else v) for k, v in kwargs.items()}
+    
+    res = np.zeros((Nsamples, *Age.shape), dtype=float)
+    
+    if model == 'NEP':
+        # read best-fit parameters and covariance matrix
+        p = pd.read_csv(r'params/NEP_full_params.csv')
+        mu = np.array(p.iloc[:,1].values)
+
+        cov = pd.read_csv(r'params/NEP_full_cov_mat.csv')
+        sigma = np.array(cov.iloc[:,1:].values)
+        
+        #print(p, mu, sigma)
+        #print(len(mu), len(sigma))
+
+        # predicted with mean parameters
+        pred_mean = nep_fun(mu, Age, **kwargs)
+            
+        #draw parameters from normal distribution
+        rng = np.random.default_rng(20251217)
+        pset = rng.multivariate_normal(mean=mu, cov=sigma, size=Nsamples)
+        
+        #res = np.zeros((Nsamples, len(Age)))
+        for k in range(Nsamples):
+            res[k] = nep_fun(pset[k], Age=Age, **kwargs)
+
+    if model == 'GPP':
+        p = pd.read_csv(r'params/gpp_full_params.csv')
+        mu = np.array(p.iloc[:,1].values)
+        cov = pd.read_csv(r'params/gpp_full_cov_mat.csv')
+        sigma = np.array(cov.iloc[:,1:].values)
+        
+        #print(p, mu, sigma)
+        #print(len(mu), len(sigma))
+
+        # predicted with mean parameters
+        pred_mean = gpp_fun(mu, Age, **kwargs)
+            
+        #draw parameters from distribution
+        rng = np.random.default_rng(20251217)
+        pset = rng.multivariate_normal(mean=mu, cov=sigma, size=Nsamples)
+        
+        #res = np.zeros((Nsamples, len(Age)))
+        for k in range(Nsamples):
+            res[k] = gpp_fun(pset[k], Age=Age, **kwargs)
+
+    if model == 'ER':
+        p = pd.read_csv(r'params/reco_full_params.csv')
+        mu = np.array(p.iloc[:,1].values)
+
+        cov = pd.read_csv(r'params/reco_full_cov_mat.csv')
+        sigma = np.array(cov.iloc[:,1:].values)
+        
+        #print(p, mu, sigma)
+        #print(len(mu), len(sigma))
+
+        # predicted with mean parameters
+        pred_mean = reco_fun(mu, Age, **kwargs)
+            
+        #draw parameters from distribution
+        rng = np.random.default_rng(20251217)
+        pset = rng.multivariate_normal(mean=mu, cov=sigma, size=Nsamples)
+        
+        #res = np.zeros((Nsamples, len(Age)))
+        for k in range(Nsamples):
+            res[k] = reco_fun(pset[k], Age=Age, **kwargs)
+
+    if model == 'BAL':
+        # GPP
+        gpp_res = np.zeros((Nsamples, *Age.shape), dtype=float)
+        gpp_p = pd.read_csv(r'params/gpp_full_params.csv')
+        gpp_mu = np.array(gpp_p.iloc[:,1].values)
+        gpp_cov = pd.read_csv(r'params/gpp_full_cov_mat.csv')
+        gpp_sigma = np.array(gpp_cov.iloc[:,1:].values)
+        # predicted with mean parameters
+        gpp_pred_mean = gpp_fun(gpp_mu, Age, **kwargs)
+        #draw parameters from distribution
+        gpp_rng = np.random.default_rng(20251217)
+        gpp_pset = gpp_rng.multivariate_normal(mean=gpp_mu, cov=gpp_sigma, size=Nsamples)
+        for k in range(Nsamples):
+            gpp_res[k] = gpp_fun(gpp_pset[k], Age=Age, **kwargs)
+        
+        # RECO
+        reco_res = np.zeros((Nsamples, *Age.shape), dtype=float)
+        reco_p = pd.read_csv(r'params/reco_full_params.csv')
+        reco_mu = np.array(reco_p.iloc[:,1].values)
+        reco_cov = pd.read_csv(r'params/reco_full_cov_mat.csv')
+        reco_sigma = np.array(reco_cov.iloc[:,1:].values)
+        # predicted with mean parameters
+        reco_pred_mean = reco_fun(reco_mu, Age, **kwargs)
+        #draw parameters from distribution
+        reco_rng = np.random.default_rng(20251217)
+        reco_pset = reco_rng.multivariate_normal(mean=reco_mu, cov=reco_sigma, size=Nsamples)
+        for k in range(Nsamples):
+            reco_res[k] = reco_fun(reco_pset[k], Age=Age, **kwargs)
+
+    if model == 'BAL':
+        bal_res = gpp_res - reco_res
+        bal_mu = gpp_pred_mean - reco_pred_mean
+        std = np.std(bal_res, axis=0)
+        if is_xr:
+            std = xr.DataArray(std, dims=age_dims, coords=age_coords)
+            pred_mean = xr.DataArray(bal_mu, dims=age_dims, coords=age_coords)
+    else:
+        std = np.std(res, axis=0)
+        if is_xr:
+            pred_mean = xr.DataArray(pred_mean, dims=age_dims, coords=age_coords)
+            std = xr.DataArray(std, dims=age_dims, coords=age_coords)
+            
+    return pred_mean, std#, res
